@@ -2,7 +2,7 @@
   "apiVersion": 1,
   "id": "modera.boot-animation",
   "name": "Boot Animation",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Play a customizable intro when Modera opens or when a pinned conversation is entered.",
   "author": "Modera contributors",
   "category": "appearance",
