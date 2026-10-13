@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
+import { join } from "node:path";
 import { ClipStore, readBody } from "./store.js";
 import type { PluginContext, PluginContributions } from "@modera/plugin-sdk";
 
@@ -7,7 +8,7 @@ let stop: (() => void) | undefined;
 
 export async function activate(context: PluginContext): Promise<PluginContributions> {
   context.signal.throwIfAborted();
-  const clips = new ClipStore(context.storagePath);
+  const clips = new ClipStore(context.storagePath, join(__dirname, "media"));
   const token = randomBytes(32).toString("hex");
   const mount = `/boot/${randomBytes(24).toString("hex")}`;
   const server = createServer(async (request, response) => {
@@ -31,7 +32,7 @@ export async function activate(context: PluginContext): Promise<PluginContributi
     const path = new URL(request.url, "http://localhost").pathname.slice(mount.length);
     const authenticated = request.headers["x-modera-boot"] === token;
     // A media element cannot send a header; the unguessable mount path grants only video reads.
-    const mediaPath = /^\/media\/(?:[a-f0-9-]{36}|file-[a-f0-9]{32}|manual-intro|environment)$/.test(path);
+    const mediaPath = /^\/media\/(?:[a-f0-9-]{36}|file-[a-f0-9]{32}|builtin-(?:brand|cyberpunk|awakening|startup)|manual-intro|environment)$/.test(path);
     if (!authenticated && !(request.method === "GET" && mediaPath)) {
       response.writeHead(403).end();
       return;
@@ -47,16 +48,17 @@ export async function activate(context: PluginContext): Promise<PluginContributi
         const patch = JSON.parse((await readBody(request, 16 * 1024)).toString());
         if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("invalid settings");
         const previous = await clips.settings();
-        const allowed = ["selectedClipId", "playOnAppStart", "fitMode", "pinnedSessions", "conversationOverrides"];
+        const allowed = ["selectedClipId", "playOnAppStart", "randomPlayback", "fitMode", "pinnedSessions", "conversationOverrides"];
         if (Object.keys(patch).some((key) => !allowed.includes(key))) throw new Error("unknown setting");
         const next = { ...previous, ...patch };
         const available = new Set((await clips.clips()).map((clip) => clip.id));
         if (next.selectedClipId !== null && next.selectedClipId !== "default" && !available.has(next.selectedClipId)) throw new Error("clip unavailable");
         if (typeof next.playOnAppStart !== "boolean") throw new Error("invalid playback setting");
+        if (typeof next.randomPlayback !== "boolean") throw new Error("invalid random playback setting");
         if (!["cover", "contain"].includes(next.fitMode)) throw new Error("invalid fit mode");
         if (!Array.isArray(next.pinnedSessions) || next.pinnedSessions.some((id: unknown) => typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)))
           throw new Error("invalid pinned sessions");
-        if (!next.conversationOverrides || typeof next.conversationOverrides !== "object" || Array.isArray(next.conversationOverrides) || Object.values(next.conversationOverrides).some((id) => !/^(?:[a-f0-9-]{36}|file-[a-f0-9]{32}|manual-intro|environment)$/.test(String(id))))
+        if (!next.conversationOverrides || typeof next.conversationOverrides !== "object" || Array.isArray(next.conversationOverrides) || Object.values(next.conversationOverrides).some((id) => !/^(?:[a-f0-9-]{36}|file-[a-f0-9]{32}|builtin-(?:brand|cyberpunk|awakening|startup)|manual-intro|environment)$/.test(String(id))))
           throw new Error("invalid conversation override");
         json(200, { settings: await clips.save(next) });
       } else if (request.method === "POST" && path === "/upload") {

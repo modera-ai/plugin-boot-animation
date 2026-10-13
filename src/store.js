@@ -2,16 +2,18 @@ import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { BUILTIN_CLIPS } from "./builtin-clips.js";
 
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 const VIDEO_TYPES = new Map([
   [".mp4", "video/mp4"], [".webm", "video/webm"], [".m4v", "video/mp4"],
 ]);
-const CLIP_ID = /^(?:[a-f0-9-]{36}|file-[a-f0-9]{32}|manual-intro|environment|default)$/;
+const CLIP_ID = /^(?:[a-f0-9-]{36}|file-[a-f0-9]{32}|builtin-(?:brand|cyberpunk|awakening|startup)|manual-intro|environment|default)$/;
 const fileId = (name) => `file-${createHash("sha256").update(name).digest("hex").slice(0, 32)}`;
 const DEFAULT_SETTINGS = {
   selectedClipId: null,
   playOnAppStart: true,
+  randomPlayback: false,
   fitMode: "cover",
   pinnedSessions: [],
   conversationOverrides: {},
@@ -34,6 +36,7 @@ export function normalizeSettings(input) {
     selectedClipId: CLIP_ID.test(source.selectedClipId)
       ? source.selectedClipId : null,
     playOnAppStart: source.playOnAppStart !== false,
+    randomPlayback: source.randomPlayback === true,
     fitMode: source.fitMode === "contain" ? "contain" : "cover",
     pinnedSessions,
     conversationOverrides,
@@ -52,8 +55,9 @@ export function parseRange(header, size) {
 }
 
 export class ClipStore {
-  constructor(directory) {
+  constructor(directory, builtinDirectory) {
     this.directory = directory;
+    this.builtinDirectory = builtinDirectory;
     this.videoDirectory = join(directory, "videos");
     this.settingsFile = join(directory, "selection.json");
     this.namesFile = join(directory, "clip-names.json");
@@ -78,6 +82,10 @@ export class ClipStore {
     const files = await readdir(this.videoDirectory).catch(() => []);
     const names = await readFile(this.namesFile, "utf8").then(JSON.parse).catch(() => ({}));
     const clips = [];
+    for (const clip of BUILTIN_CLIPS) {
+      const file = await this.file(clip.id);
+      if (file) clips.push({ id: clip.id, name: clip.name, bytes: file.size, type: file.type, writable: false });
+    }
     for (const file of files) {
       const match = /\.(mp4|webm|m4v)$/i.exec(file);
       if (!match) continue;
@@ -113,6 +121,13 @@ export class ClipStore {
   }
 
   async file(id) {
+    const builtin = BUILTIN_CLIPS.find((clip) => clip.id === id);
+    if (builtin) {
+      if (!this.builtinDirectory) return null;
+      const path = join(this.builtinDirectory, builtin.file);
+      const info = await stat(path).catch(() => null);
+      return info?.isFile() && info.size > 0 ? { path, size: info.size, type: "video/mp4" } : null;
+    }
     if (id === "manual-intro" || id === "environment") {
       const path = id === "manual-intro" ? this.introFile : process.env.MODERA_BOOT_ANIMATION;
       const extension = path && /\.(mp4|webm|m4v)$/i.exec(path)?.[0].toLowerCase();

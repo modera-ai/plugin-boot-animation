@@ -4,6 +4,26 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ClipStore, normalizeSettings, parseRange } from "../src/store.js";
 
+test("bundled clips keep stable selections across reload without copying into user storage", async () => {
+  const directory = await mkdtemp(join(import.meta.dirname, ".boot-test-"));
+  try {
+    const media = join(import.meta.dirname, "../media");
+    const first = new ClipStore(directory, media);
+    const clips = await first.clips();
+    assert.equal(clips.length, 4);
+    await first.save({ selectedClipId: clips[0].id, conversationOverrides: { "session-1": clips[3].id } });
+    const second = new ClipStore(directory, media);
+    assert.equal((await second.settings()).selectedClipId, clips[0].id);
+    assert.equal((await second.settings()).conversationOverrides["session-1"], clips[3].id);
+    assert.equal((await second.file(clips[0].id)).path, join(media, "deepseek-brand-intro.mp4"));
+    assert.equal(await second.remove(clips[0].id), false);
+    assert.equal(await second.file("builtin-../intro"), null);
+    assert.equal((await new ClipStore(directory, join(directory, "missing")).clips()).length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("video selection survives reload and removing a clip clears its session pin", async () => {
   const directory = await mkdtemp(join(import.meta.dirname, ".boot-test-"));
   try {
@@ -12,6 +32,7 @@ test("video selection survives reload and removing a clip clears its session pin
     await first.save({
       selectedClipId: clip.id,
       playOnAppStart: false,
+      randomPlayback: true,
       fitMode: "contain",
       pinnedSessions: ["session-1"],
       conversationOverrides: { "session-1": clip.id },
@@ -19,6 +40,7 @@ test("video selection survives reload and removing a clip clears its session pin
     const second = new ClipStore(directory);
     assert.equal((await second.clips())[0].name, "intro.mp4");
     assert.equal((await second.settings()).playOnAppStart, false);
+    assert.equal((await second.settings()).randomPlayback, true);
     assert.deepEqual((await second.settings()).pinnedSessions, ["session-1"]);
     assert.equal((await second.settings()).conversationOverrides["session-1"], clip.id);
     await second.remove(clip.id);

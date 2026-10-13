@@ -59,9 +59,45 @@ try {
   if (launcherSize > 40) throw new Error(`Intro library button is too wide: ${launcherSize}px`);
   await expect(page.locator("body > .modera-boot-footer-actions")).toHaveCount(0);
   await footer.locator(".modera-boot-launcher").click();
-  await expect(page.getByRole("dialog", { name: "片头动画设置" })).toBeVisible();
-  await page.locator(".modera-boot-close").click();
-  console.log("PASS: intro library and session pin stay in the left conversation footer");
+  const libraryDialog = page.getByRole("dialog", { name: "片头片库" });
+  await expect(libraryDialog).toBeVisible();
+  const builtins = page.locator(".dba-item").filter({ hasText: "插件内置" });
+  await expect(builtins).toHaveCount(4);
+  for (let index = 0; index < 4; index++) {
+    await expect(builtins.nth(index).getByRole("button", { name: "删除", exact: true })).toHaveCount(0);
+    await builtins.nth(index).getByRole("button", { name: "▶ 预览", exact: true }).click();
+    const video = page.locator(".modera-boot-video");
+    await expect(video).toBeVisible();
+    await expect.poll(() => video.evaluate((node) => node.readyState), { timeout: 15000 }).toBeGreaterThanOrEqual(3);
+    await skip.click();
+    await expect(libraryDialog).toBeVisible();
+    await expect(builtins.getByRole("button", { name: "已选", exact: true })).toHaveCount(0);
+  }
+  await builtins.first().getByRole("button", { name: "选它", exact: true }).click();
+  await expect(builtins.first().getByRole("button", { name: "已选", exact: true })).toBeDisabled();
+  await libraryDialog.getByRole("button", { name: "完整显示", exact: true }).click();
+  await expect(libraryDialog.getByRole("button", { name: "完整显示", exact: true })).toHaveClass(/dba-btn-on/);
+  await libraryDialog.getByRole("button", { name: "🎲 随机播放：关", exact: true }).click();
+  await expect(libraryDialog.getByRole("button", { name: "🎲 随机播放：开", exact: true })).toBeVisible();
+  await libraryDialog.getByRole("button", { name: "▶ 播一次", exact: true }).click();
+  await expect(page.locator(".modera-boot-video")).toBeVisible();
+  const firstRandom = await page.locator(".modera-boot-video").getAttribute("src");
+  await skip.click();
+  await libraryDialog.getByRole("button", { name: "▶ 播一次", exact: true }).click();
+  await expect(page.locator(".modera-boot-video")).toBeVisible();
+  const secondRandom = await page.locator(".modera-boot-video").getAttribute("src");
+  if (firstRandom === secondRandom) throw new Error("Random playback repeated the previous clip");
+  await skip.click();
+  await libraryDialog.getByRole("button", { name: "刷新", exact: true }).click();
+  await expect(libraryDialog.getByRole("button", { name: "🎲 随机播放：开", exact: true })).toBeVisible();
+  await page.screenshot({ path: join(root, "release/upstream-library.png") });
+  await libraryDialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(libraryDialog).toHaveCount(0);
+  await footer.locator(".modera-boot-launcher").click();
+  await expect(builtins.first().getByRole("button", { name: "已选", exact: true })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(libraryDialog).toHaveCount(0);
+  console.log("PASS: upstream library previews, selection, fit, random playback, refresh and close");
 } finally {
   await app.close();
 }

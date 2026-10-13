@@ -16,6 +16,27 @@ test("local service protects settings and streams selected media by range", asyn
     const unauthenticated = await fetch(endpoint + "/library");
     assert.equal(unauthenticated.status, 403);
     const headers = { "X-Modera-Boot": token };
+    const initial = await fetch(endpoint + "/library", { headers }).then((response) => response.json());
+    const builtins = initial.clips.filter((clip) => clip.id.startsWith("builtin-"));
+    assert.deepEqual(builtins.map((clip) => clip.id), ["builtin-brand", "builtin-cyberpunk", "builtin-awakening", "builtin-startup"]);
+    for (const builtin of builtins) {
+      assert.equal(builtin.writable, false);
+      const media = await fetch(`${endpoint}/media/${builtin.id}`, { headers: { Range: "bytes=0-31" } });
+      assert.equal(media.status, 206);
+      assert.equal(media.headers.get("content-type"), "video/mp4");
+      assert.equal(media.headers.get("content-range"), `bytes 0-31/${builtin.bytes}`);
+      assert.equal(Buffer.from(await media.arrayBuffer()).toString("ascii", 4, 8), "ftyp");
+      const selected = await fetch(endpoint + "/settings", {
+        method: "POST", headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedClipId: builtin.id, conversationOverrides: { "session-1": builtin.id } }),
+      });
+      assert.equal(selected.status, 200);
+      const saved = (await selected.json()).settings;
+      assert.equal(saved.selectedClipId, builtin.id);
+      assert.equal(saved.conversationOverrides["session-1"], builtin.id);
+      assert.equal((await fetch(`${endpoint}/media/${builtin.id}`, { method: "DELETE", headers })).status, 404);
+    }
+    assert.equal((await fetch(`${endpoint}/media/builtin-unknown`)).status, 403);
     const upload = await fetch(endpoint + "/upload", {
       method: "POST", headers: { ...headers, "X-Video-Name": "intro.mp4" }, body: Buffer.from("abcdefghij"),
     });
@@ -27,12 +48,13 @@ test("local service protects settings and streams selected media by range", asyn
     assert.equal(await range.text(), "cdef");
     const settings = await fetch(endpoint + "/settings", {
       method: "POST", headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ selectedClipId: clip.id, playOnAppStart: false }),
+      body: JSON.stringify({ selectedClipId: clip.id, playOnAppStart: false, randomPlayback: true }),
     });
     assert.equal(settings.status, 200);
     const library = await fetch(endpoint + "/library", { headers }).then((response) => response.json());
     assert.equal(library.settings.selectedClipId, clip.id);
     assert.equal(library.settings.playOnAppStart, false);
+    assert.equal(library.settings.randomPlayback, true);
   } finally {
     controller.abort();
     await plugin.deactivate();
