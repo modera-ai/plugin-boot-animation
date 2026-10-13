@@ -42,7 +42,9 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
   const launcher = document.createElement("button");
   launcher.type = "button";
   launcher.className = "modera-boot-launcher";
-  launcher.textContent = "🎛 片头片库";
+  launcher.textContent = "🎬";
+  launcher.title = "片头片库";
+  launcher.setAttribute("aria-label", "片头片库");
   launcher.setAttribute("aria-haspopup", "dialog");
   const pinButton = document.createElement("button");
   pinButton.type = "button";

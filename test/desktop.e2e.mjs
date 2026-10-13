@@ -37,6 +37,9 @@ try {
   const footer = page.locator(".app-sidebar [data-plugin-sidebar-footer]");
   await expect(footer.locator(".modera-boot-pin")).toBeVisible({ timeout: 30000 });
   await expect(footer.locator(".modera-boot-launcher")).toBeVisible();
+  await expect(footer.locator(".modera-boot-launcher")).toHaveText("🎬");
+  const launcherSize = await footer.locator(".modera-boot-launcher").evaluate((node) => node.getBoundingClientRect().width);
+  if (launcherSize > 40) throw new Error(`Intro library button is too wide: ${launcherSize}px`);
   await expect(page.locator("body > .modera-boot-footer-actions")).toHaveCount(0);
   await footer.locator(".modera-boot-launcher").click();
   await expect(page.getByRole("dialog", { name: "片头动画设置" })).toBeVisible();
