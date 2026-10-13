@@ -31,7 +31,8 @@ export async function activate(context: PluginContext): Promise<PluginContributi
     const path = new URL(request.url, "http://localhost").pathname.slice(mount.length);
     const authenticated = request.headers["x-modera-boot"] === token;
     // A media element cannot send a header; the unguessable mount path grants only video reads.
-    if (!authenticated && !(request.method === "GET" && /^\/media\/[a-f0-9-]{36}$/.test(path))) {
+    const mediaPath = /^\/media\/(?:[a-f0-9-]{36}|file-[a-f0-9]{32}|manual-intro|environment)$/.test(path);
+    if (!authenticated && !(request.method === "GET" && mediaPath)) {
       response.writeHead(403).end();
       return;
     }
@@ -41,26 +42,30 @@ export async function activate(context: PluginContext): Promise<PluginContributi
     };
     try {
       if (request.method === "GET" && path === "/library") {
-        json(200, { clips: await clips.clips(), settings: await clips.settings() });
+        json(200, { clips: await clips.clips(), settings: await clips.settings(), introPath: clips.introFile, videoDirectory: clips.videoDirectory });
       } else if (request.method === "POST" && path === "/settings") {
         const patch = JSON.parse((await readBody(request, 16 * 1024)).toString());
         if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("invalid settings");
         const previous = await clips.settings();
-        const allowed = ["selectedClipId", "playOnAppStart", "fitMode", "pinnedSessions"];
+        const allowed = ["selectedClipId", "playOnAppStart", "fitMode", "pinnedSessions", "conversationOverrides"];
         if (Object.keys(patch).some((key) => !allowed.includes(key))) throw new Error("unknown setting");
         const next = { ...previous, ...patch };
         const available = new Set((await clips.clips()).map((clip) => clip.id));
-        if (next.selectedClipId !== null && !available.has(next.selectedClipId)) throw new Error("clip unavailable");
+        if (next.selectedClipId !== null && next.selectedClipId !== "default" && !available.has(next.selectedClipId)) throw new Error("clip unavailable");
         if (typeof next.playOnAppStart !== "boolean") throw new Error("invalid playback setting");
         if (!["cover", "contain"].includes(next.fitMode)) throw new Error("invalid fit mode");
+        if (!Array.isArray(next.pinnedSessions) || next.pinnedSessions.some((id: unknown) => typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)))
+          throw new Error("invalid pinned sessions");
+        if (!next.conversationOverrides || typeof next.conversationOverrides !== "object" || Array.isArray(next.conversationOverrides) || Object.values(next.conversationOverrides).some((id) => !/^(?:[a-f0-9-]{36}|file-[a-f0-9]{32}|manual-intro|environment)$/.test(String(id))))
+          throw new Error("invalid conversation override");
         json(200, { settings: await clips.save(next) });
       } else if (request.method === "POST" && path === "/upload") {
         const name = decodeURIComponent(String(request.headers["x-video-name"] || ""));
         const video = await readBody(request, 100 * 1024 * 1024);
         json(201, { clip: await clips.upload(name, video) });
-      } else if (request.method === "DELETE" && /^\/media\/[a-f0-9-]{36}$/.test(path)) {
+      } else if (request.method === "DELETE" && mediaPath) {
         json((await clips.remove(path.slice(7))) ? 200 : 404, { ok: true });
-      } else if (request.method === "GET" && /^\/media\/[a-f0-9-]{36}$/.test(path)) {
+      } else if (request.method === "GET" && mediaPath) {
         await clips.stream(path.slice(7), request.headers.range, response);
       } else response.writeHead(404).end();
     } catch (error) {

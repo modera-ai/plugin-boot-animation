@@ -1,4 +1,5 @@
 const bootMark = "__moderaBootAnimationPlayed";
+const draftMark = "__moderaBootAnimationInitialDraftPlayed";
 
 export default async function mount({ projectId, currentSessionId, onSessionChanged, signal }) {
   const connection = await window.modera.plugins.uiRequest({
@@ -27,12 +28,52 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
   let playback = null;
   let dialog = null;
   let playNumber = 0;
+  const fallbackClip = () => library.clips.find((clip) => clip.id === "environment")?.id
+    || library.clips.find((clip) => clip.id === "manual-intro")?.id
+    || library.clips.find((clip) => clip.writable || clip.id.startsWith("file-"))?.id || null;
+  const activeClip = (session) => {
+    const override = session && library.settings.conversationOverrides[session];
+    if (override && library.clips.some((clip) => clip.id === override)) return override;
+    if (library.settings.selectedClipId === "default") return null;
+    if (library.settings.selectedClipId && library.clips.some((clip) => clip.id === library.settings.selectedClipId))
+      return library.settings.selectedClipId;
+    return fallbackClip();
+  };
   const launcher = document.createElement("button");
   launcher.type = "button";
   launcher.className = "modera-boot-launcher";
-  launcher.textContent = "片头动画";
+  launcher.textContent = "🎛 片头片库";
   launcher.setAttribute("aria-haspopup", "dialog");
-  document.body.append(launcher);
+  const pinButton = document.createElement("button");
+  pinButton.type = "button";
+  pinButton.className = "modera-boot-pin";
+  const footerActions = document.createElement("div");
+  footerActions.className = "modera-boot-footer-actions";
+  footerActions.append(pinButton, launcher);
+  const placeFooter = () => {
+    const footer = document.querySelector(".mu-animated-sidebar-footer");
+    if (footer && footerActions.parentElement !== footer) footer.append(footerActions);
+    else if (!footer && !footerActions.isConnected) document.body.append(footerActions);
+  };
+  const footerObserver = new MutationObserver(placeFooter);
+  footerObserver.observe(document.getElementById("root") || document.body, { childList: true, subtree: true });
+  placeFooter();
+  const syncPin = () => {
+    const pinned = !!currentSession && library.settings.pinnedSessions.includes(currentSession);
+    pinButton.textContent = pinned ? "🎬" : "🎞";
+    pinButton.title = pinned ? "取消此会话片头固定" : "每次进入此会话时播放片头";
+    pinButton.setAttribute("aria-label", pinButton.title);
+    pinButton.setAttribute("aria-pressed", String(pinned));
+    pinButton.disabled = !currentSession;
+  };
+  pinButton.addEventListener("click", async () => {
+    const pinnedSessions = new Set(library.settings.pinnedSessions);
+    if (pinnedSessions.has(currentSession)) pinnedSessions.delete(currentSession);
+    else pinnedSessions.add(currentSession);
+    try { await save({ pinnedSessions: [...pinnedSessions] }); }
+    catch (error) { showError(error.message); }
+  });
+  syncPin();
 
   const closePlayback = () => {
     ++playNumber;
@@ -46,6 +87,7 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
   };
   window.addEventListener("keydown", onKeyDown);
   const play = (id) => {
+    if (dialog?.open) dialog.close();
     closePlayback();
     const number = playNumber;
     const frame = document.createElement("div");
@@ -58,8 +100,9 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
     skip.textContent = "跳过 ×";
     skip.addEventListener("click", closePlayback);
     frame.append(skip);
+    let video;
     if (id) {
-      const video = document.createElement("video");
+      video = document.createElement("video");
       video.className = "modera-boot-video";
       video.style.objectFit = library.settings.fitMode;
       video.src = `${endpoint}/media/${encodeURIComponent(id)}`;
@@ -67,12 +110,8 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
       video.autoplay = true;
       video.addEventListener("ended", closePlayback, { once: true });
       video.addEventListener("error", closePlayback, { once: true });
+      setTimeout(() => { if (number === playNumber && video.readyState < 3) closePlayback(); }, 25000);
       frame.prepend(video);
-      void video.play().catch(() => {
-        if (number !== playNumber) return;
-        video.muted = true;
-        return video.play().catch(closePlayback);
-      });
     } else {
       const brand = document.createElement("div");
       brand.className = "modera-boot-brand";
@@ -82,6 +121,11 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
     }
     document.body.append(frame);
     playback = frame;
+    if (video) void video.play().catch(() => {
+      if (number !== playNumber) return;
+      video.muted = true;
+      return video.play().catch(closePlayback);
+    });
     skip.focus();
   };
 
@@ -90,6 +134,7 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
     });
     library.settings = result.settings;
+    syncPin();
     renderDialog();
   };
   const element = (tag, text, className) => {
@@ -102,7 +147,7 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
     if (!dialog) return;
     const body = dialog.querySelector(".modera-boot-content");
     body.replaceChildren();
-    const description = element("p", "启动或进入已固定的会话时播放片头。可上传 MP4、WebM 或 M4V 视频（最大 100 MB）。");
+    const description = element("p", "启动或进入已固定的会话时播放片头。可上传 MP4、WebM 或 M4V 视频（最大 100 MB）。侧栏页脚的 🎞 用于固定当前会话。");
     body.append(description);
     const upload = element("input", "");
     upload.type = "file";
@@ -121,6 +166,14 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
       } catch (error) { showError(error.message); }
     });
     body.append(upload);
+    const manual = element("p", `也可把视频放到 ${library.videoDirectory}、把默认 MP4 放到 ${library.introPath}，或在启动 Modera 前设置 MODERA_BOOT_ANIMATION 为视频路径。放入后点击刷新片库。`);
+    body.append(manual);
+    const refresh = element("button", "刷新片库");
+    refresh.addEventListener("click", async () => {
+      try { library = await request("/library"); renderDialog(); }
+      catch (error) { showError(error.message); }
+    });
+    body.append(refresh);
     const startup = document.createElement("label");
     const check = element("input", "");
     check.type = "checkbox";
@@ -140,22 +193,22 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
     fitSelect.addEventListener("change", () => void save({ fitMode: fitSelect.value }).catch((error) => showError(error.message)));
     fit.append(fitSelect);
     body.append(fit);
-    if (currentSession) {
-      const pin = element("button", library.settings.pinnedSessions[currentSession] ? "取消此会话的片头" : "将选中片头固定到此会话");
-      pin.disabled = !library.settings.selectedClipId && !library.settings.pinnedSessions[currentSession];
-      pin.addEventListener("click", () => {
-        const pinnedSessions = { ...library.settings.pinnedSessions };
-        if (pinnedSessions[currentSession]) delete pinnedSessions[currentSession];
-        else pinnedSessions[currentSession] = library.settings.selectedClipId;
-        void save({ pinnedSessions }).catch((error) => showError(error.message));
+    if (currentSession && library.settings.conversationOverrides[currentSession]) {
+      const clearOverride = element("button", "取消本会话专属视频");
+      clearOverride.addEventListener("click", () => {
+        const conversationOverrides = { ...library.settings.conversationOverrides };
+        delete conversationOverrides[currentSession];
+        void save({ conversationOverrides }).catch((error) => showError(error.message));
       });
-      body.append(pin);
+      body.append(clearOverride);
     }
     body.append(element("h3", "片库"));
     const fallback = element("div", "默认 Modera 动画", "modera-boot-row");
     const fallbackPreview = element("button", "预览");
     fallbackPreview.addEventListener("click", () => play(null));
-    fallback.append(fallbackPreview);
+    const fallbackSelect = element("button", "选用默认");
+    fallbackSelect.addEventListener("click", () => void save({ selectedClipId: "default" }).catch((error) => showError(error.message)));
+    fallback.append(fallbackPreview, fallbackSelect);
     body.append(fallback);
     for (const clip of library.clips) {
       const row = element("div", "", "modera-boot-row");
@@ -165,15 +218,24 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
       const select = element("button", library.settings.selectedClipId === clip.id ? "已选中" : "选用");
       select.disabled = library.settings.selectedClipId === clip.id;
       select.addEventListener("click", () => void save({ selectedClipId: clip.id }).catch((error) => showError(error.message)));
-      const remove = element("button", "删除");
-      remove.addEventListener("click", async () => {
-        try {
-          await request(`/media/${clip.id}`, { method: "DELETE" });
-          library = await request("/library");
-          renderDialog();
-        } catch (error) { showError(error.message); }
-      });
-      row.append(preview, select, remove);
+      row.append(preview, select);
+      if (currentSession) {
+        const onlyHere = element("button", library.settings.conversationOverrides[currentSession] === clip.id ? "本会话已选" : "仅本会话");
+        onlyHere.disabled = library.settings.conversationOverrides[currentSession] === clip.id;
+        onlyHere.addEventListener("click", () => void save({ conversationOverrides: { ...library.settings.conversationOverrides, [currentSession]: clip.id } }).catch((error) => showError(error.message)));
+        row.append(onlyHere);
+      }
+      if (clip.writable) {
+        const remove = element("button", "删除");
+        remove.addEventListener("click", async () => {
+          try {
+            await request(`/media/${clip.id}`, { method: "DELETE" });
+            library = await request("/library");
+            renderDialog();
+          } catch (error) { showError(error.message); }
+        });
+        row.append(remove);
+      }
       body.append(row);
     }
   };
@@ -197,22 +259,35 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
   const unsubscribe = onSessionChanged((id) => {
     if (id === currentSession) return;
     currentSession = id;
+    syncPin();
     renderDialog();
-    if (id && library.settings.pinnedSessions[id]) play(library.settings.pinnedSessions[id]);
+    if (id && library.settings.pinnedSessions.includes(id)) play(activeClip(id));
   });
-  if (library.settings.playOnAppStart && !window[bootMark]) {
+  const onNewDraft = () => {
+    if (!library.settings.playOnAppStart) play(activeClip(""));
+  };
+  window.addEventListener("modera:conversation-created-draft", onNewDraft);
+  if (currentSession && library.settings.pinnedSessions.includes(currentSession)) {
+    if (library.settings.playOnAppStart) window[bootMark] = true;
+    play(activeClip(currentSession));
+  } else if (library.settings.playOnAppStart && !window[bootMark]) {
     window[bootMark] = true;
-    play(currentSession && library.settings.pinnedSessions[currentSession] || library.settings.selectedClipId);
+    play(activeClip(currentSession));
+  } else if (!library.settings.playOnAppStart && !currentSession && !window[draftMark]) {
+    window[draftMark] = true;
+    play(activeClip(""));
   }
   let disposed = false;
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
     unsubscribe();
+    window.removeEventListener("modera:conversation-created-draft", onNewDraft);
+    footerObserver.disconnect();
     window.removeEventListener("keydown", onKeyDown);
     closePlayback();
     dialog?.close();
-    launcher.remove();
+    footerActions.remove();
   };
   signal.addEventListener("abort", cleanup, { once: true });
   return cleanup;
