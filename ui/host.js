@@ -53,7 +53,8 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
   footerActions.className = "modera-boot-footer-actions";
   footerActions.append(pinButton, launcher);
   const placeFooter = () => {
-    const footer = document.querySelector(".app-sidebar [data-plugin-sidebar-footer]");
+    const footer = document.querySelector(".app-sidebar [data-plugin-sidebar-above-footer]")
+      || document.querySelector(".app-sidebar [data-plugin-sidebar-footer]");
     if (footer && footerActions.parentElement !== footer) footer.append(footerActions);
     else if (!footer && footerActions.isConnected) footerActions.remove();
   };

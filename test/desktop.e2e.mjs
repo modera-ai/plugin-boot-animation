@@ -34,10 +34,27 @@ try {
   const page = await app.firstWindow();
   const skip = page.getByRole("button", { name: "跳过 ×" });
   if (await skip.isVisible().catch(() => false)) await skip.click();
-  const footer = page.locator(".app-sidebar [data-plugin-sidebar-footer]");
+  const footer = page.locator(".app-sidebar [data-plugin-sidebar-above-footer]");
   await expect(footer.locator(".modera-boot-pin")).toBeVisible({ timeout: 30000 });
   await expect(footer.locator(".modera-boot-launcher")).toBeVisible();
   await expect(footer.locator(".modera-boot-launcher")).toHaveText("🎬");
+  await page.evaluate(() => localStorage.setItem("modera.sidebar.workbench-entries", JSON.stringify(["plugins"])));
+  await page.reload();
+  if (await skip.isVisible().catch(() => false)) await skip.click();
+  await expect(footer.locator(".modera-boot-launcher")).toBeVisible({ timeout: 30000 });
+  await expect(page.locator(".app-sidebar-navigation-footer")).toBeVisible();
+  await expect(skip).toBeVisible({ timeout: 30000 });
+  await skip.click();
+  await expect(page.locator(".modera-boot-overlay")).toHaveCount(0);
+  const footerOrder = await page.evaluate(() => {
+    const injection = document.querySelector("[data-plugin-sidebar-above-footer]").getBoundingClientRect();
+    const settings = document.querySelector(".app-sidebar-navigation-footer").getBoundingClientRect();
+    return injection.bottom <= settings.top;
+  });
+  if (!footerOrder) throw new Error("Intro actions must stay above settings");
+  await page.screenshot({ path: join(root, "release/sidebar-footer.png") });
+  await expect(page.locator("[data-plugin-sidebar-footer] .modera-boot-footer-actions")).toHaveCount(0);
+
   const launcherSize = await footer.locator(".modera-boot-launcher").evaluate((node) => node.getBoundingClientRect().width);
   if (launcherSize > 40) throw new Error(`Intro library button is too wide: ${launcherSize}px`);
   await expect(page.locator("body > .modera-boot-footer-actions")).toHaveCount(0);
