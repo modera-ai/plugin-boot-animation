@@ -1,0 +1,12 @@
+.modera-boot-launcher{position:fixed;right:18px;bottom:18px;z-index:1200;padding:9px 14px;border-radius:10px;border:1px solid #ffffff40;background:#15202dda;color:white;cursor:pointer;box-shadow:0 8px 24px #0004;font:500 13px system-ui}
+.modera-boot-settings{width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;border:1px solid #7788a060;border-radius:18px;padding:24px;background:#202734;color:#f4f6f9;box-shadow:0 24px 70px #0008;font:14px/1.5 system-ui}
+.modera-boot-settings::backdrop{background:#080d17aa}
+.modera-boot-settings h2{margin:0 0 12px;font-size:21px}.modera-boot-settings h3{margin:22px 0 10px;font-size:15px}.modera-boot-settings p{color:#c1ccdb}
+.modera-boot-settings .modera-boot-error{color:#ffb2a8;min-height:1em}
+.modera-boot-content{display:grid;gap:12px}.modera-boot-content label{display:flex;align-items:center;gap:8px}
+.modera-boot-settings button,.modera-boot-settings select{border:1px solid #8796aa80;border-radius:8px;background:#344153;color:#fff;padding:7px 10px;cursor:pointer}.modera-boot-settings button:disabled{opacity:.55;cursor:default}
+.modera-boot-close{float:right}.modera-boot-row{display:flex;align-items:center;gap:8px;padding:10px;border:1px solid #8292a350;border-radius:10px}.modera-boot-row span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.modera-boot-overlay{position:fixed;inset:0;z-index:2147483000;background:#080e19;display:grid;place-items:center;overflow:hidden}.modera-boot-video{width:100%;height:100%;display:block;background:#080e19}
+.modera-boot-skip{position:absolute;right:20px;top:20px;z-index:1;border:1px solid #ffffff55;background:#111b2ad9;color:white;border-radius:9px;padding:9px 14px;cursor:pointer;font:14px system-ui}
+.modera-boot-brand{display:grid;place-items:center;gap:25px;color:white;font:700 clamp(32px,7vw,82px) system-ui;letter-spacing:.22em;animation:modera-boot-in 1s ease both}.modera-boot-orbit{width:96px;height:96px;border:3px solid #64b6ef;border-left-color:transparent;border-radius:50%;animation:modera-boot-spin 1.4s linear infinite}
+@keyframes modera-boot-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}@keyframes modera-boot-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.modera-boot-brand,.modera-boot-orbit{animation:none}}

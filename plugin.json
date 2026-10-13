@@ -1,0 +1,24 @@
+{
+  "apiVersion": 1,
+  "id": "modera.boot-animation",
+  "name": "Boot Animation",
+  "version": "0.1.0",
+  "description": "Play a customizable intro when Modera opens or when a pinned conversation is entered.",
+  "author": "Modera contributors",
+  "category": "appearance",
+  "icon": "play",
+  "main": "dist/index.cjs",
+  "activationScope": "global",
+  "configScope": "global",
+  "workspaceTargets": ["local", "ssh"],
+  "permissions": ["host.inject", "storage.read", "storage.write"],
+  "extensions": ["window.overlay"],
+  "frontends": { "assets": { "root": "dist/ui", "entry": "index.html" } },
+  "hostInjection": { "frontend": "assets", "script": "host.js", "stylesheet": "host.css" },
+  "locales": {
+    "zh-CN": {
+      "name": "片头动画",
+      "description": "启动时或进入指定会话时播放可自定义的视频片头。"
+    }
+  }
+}
