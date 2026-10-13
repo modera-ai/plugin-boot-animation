@@ -9,6 +9,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "pack": "npm run build && node scripts/pack.mjs",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:integration": "npm run build && node test/desktop.e2e.mjs"
   }
 }

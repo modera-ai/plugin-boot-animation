@@ -51,9 +51,9 @@ export default async function mount({ projectId, currentSessionId, onSessionChan
   footerActions.className = "modera-boot-footer-actions";
   footerActions.append(pinButton, launcher);
   const placeFooter = () => {
-    const footer = document.querySelector(".mu-animated-sidebar-footer");
+    const footer = document.querySelector(".app-sidebar [data-plugin-sidebar-footer]");
     if (footer && footerActions.parentElement !== footer) footer.append(footerActions);
-    else if (!footer && !footerActions.isConnected) document.body.append(footerActions);
+    else if (!footer && footerActions.isConnected) footerActions.remove();
   };
   const footerObserver = new MutationObserver(placeFooter);
   footerObserver.observe(document.getElementById("root") || document.body, { childList: true, subtree: true });
